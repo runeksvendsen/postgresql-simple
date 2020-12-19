@@ -79,11 +79,15 @@ getNotification conn = join $ withConnection conn fetch
     funcName = "Database.PostgreSQL.Simple.Notification.getNotification"
 
     fetch c = do
+        putStrLn "Before: 'PQ.notifies c'"
         mmsg <- PQ.notifies c
+        putStrLn "After: 'PQ.notifies c'"
         case mmsg of
           Just msg -> return (return $! convertNotice msg)
           Nothing -> do
+              putStrLn "Before: 'PQ.socket c'"
               mfd <- PQ.socket c
+              putStrLn "After: 'PQ.socket c'"
               case mfd of
                 Nothing  -> return (throwIO $! fdError funcName)
 #if defined(mingw32_HOST_OS)
@@ -107,7 +111,9 @@ getNotification conn = join $ withConnection conn fetch
                 -- unlucky,  then we could end up waiting a long time.
                 Just fd  -> do
                   return $ do
+                    putStrLn "Before: 'threadWaitRead'"
                     threadWaitRead fd `catch` (throwIO . setIOErrorLocation)
+                    putStrLn "After: 'threadWaitRead'"
                     loop
 #else
                 -- This case fixes the race condition above.   By registering
@@ -120,15 +126,22 @@ getNotification conn = join $ withConnection conn fetch
                 -- the lock... but such a major bug is likely to exhibit
                 -- itself in an at least somewhat more dramatic fashion.)
                 Just fd  -> do
+                  putStrLn "Before: 'threadWaitReadSTM'"
                   (waitRead, _) <- threadWaitReadSTM fd
+                  putStrLn "After: 'threadWaitReadSTM'"
                   return $ do
+                    putStrLn "Before: 'waitRead'"
                     atomically waitRead `catch` (throwIO . setIOErrorLocation)
+                    putStrLn "After: 'waitRead'"
                     loop
 #endif
 
     loop = join $ withConnection conn $ \c -> do
+             putStrLn "Before: 'PQ.consumeInput'"
              void $ PQ.consumeInput c
-             fetch c
+             putStrLn "After: 'PQ.consumeInput'"
+             putStrLn "Before: 'fetch"
+             fetch c <* putStrLn "After: 'fetch"
 
     setIOErrorLocation :: IOError -> IOError
     setIOErrorLocation err = err { ioe_location = B8.unpack funcName }
