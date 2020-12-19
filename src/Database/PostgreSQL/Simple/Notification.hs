@@ -47,12 +47,12 @@ import           GHC.IO.Exception ( ioe_location )
 
 #if defined(mingw32_HOST_OS)
 import           Control.Concurrent ( threadDelay )
-#elif !MIN_VERSION_base(4,7,0)
-import           Control.Concurrent ( threadWaitRead )
 #else
-import           GHC.Conc           ( atomically )
-import           Control.Concurrent ( threadWaitReadSTM )
+import           Control.Concurrent ( threadWaitRead )
 #endif
+-- import           GHC.Conc           ( atomically )
+-- import           Control.Concurrent ( threadWaitReadSTM )
+-- #endif
 
 data Notification = Notification
    { notificationPid     :: {-# UNPACK #-} !CPid
@@ -98,7 +98,7 @@ getNotification conn = join $ withConnection conn fetch
                 -- with async exceptions, whereas threadDelay can.
                 Just _fd -> do
                   return (threadDelay 1000000 >> loop)
-#elif !MIN_VERSION_base(4,7,0)
+#else
                 -- Technically there's a race condition that is usually benign.
                 -- If the connection is closed or reset after we drop the
                 -- lock,  and then the fd index is reallocated to a new
@@ -114,25 +114,6 @@ getNotification conn = join $ withConnection conn fetch
                     putStrLn "Before: 'threadWaitRead'"
                     threadWaitRead fd `catch` (throwIO . setIOErrorLocation)
                     putStrLn "After: 'threadWaitRead'"
-                    loop
-#else
-                -- This case fixes the race condition above.   By registering
-                -- our interest in the descriptor before we drop the lock,
-                -- there is no opportunity for the descriptor index to be
-                -- reallocated on us.
-                --
-                -- (That is, assuming there isn't concurrently executing
-                -- code that manipulates the descriptor without holding
-                -- the lock... but such a major bug is likely to exhibit
-                -- itself in an at least somewhat more dramatic fashion.)
-                Just fd  -> do
-                  putStrLn "Before: 'threadWaitReadSTM'"
-                  (waitRead, _) <- threadWaitReadSTM fd
-                  putStrLn "After: 'threadWaitReadSTM'"
-                  return $ do
-                    putStrLn "Before: 'waitRead'"
-                    atomically waitRead `catch` (throwIO . setIOErrorLocation)
-                    putStrLn "After: 'waitRead'"
                     loop
 #endif
 
